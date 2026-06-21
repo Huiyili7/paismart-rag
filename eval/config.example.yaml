@@ -1,0 +1,25 @@
+# Copy to config.yaml and fill in secrets for LIVE runs. The example file is
+# safe to commit (no secrets) and is what CI uses for the offline run.
+
+backend:
+  base_url: http://localhost:8081   # matches server.port in application.yml
+  username: admin          # an account that exists in the running system
+  password: admin123
+
+llm:
+  # OpenAI-compatible endpoint. DeepSeek: https://api.deepseek.com
+  # DashScope (Qwen/Doubao compatible mode): https://dashscope.aliyuncs.com/compatible-mode/v1
+  base_url: https://api.deepseek.com/v1
+  api_key: ${DEEPSEEK_API_KEY}   # read from environment; never commit the real key
+  model: deepseek-chat
+
+retrieval:
+  top_k: 5
+  ks: [1, 3, 5]
+
+# Shift-left quality gates. evaluate.py exits non-zero if any gate fails, so a
+# retrieval/quality regression breaks CI just like a failing unit test.
+gates:
+  recall@5: 0.70           # at least 70% of questions must retrieve a relevant doc in top-5
+  mrr: 0.60                # first relevant doc should rank high on average
+  hallucination_rate: 0.10 # at most 10% of answers may be unsupported / wrongly answered

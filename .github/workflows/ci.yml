@@ -1,0 +1,83 @@
+name: CI
+
+# Build + test on every push / PR. Two independent jobs:
+#   1. backend  — compile the whole Spring Boot project and run the infra-free
+#                 (Mockito / plain JUnit) unit tests.
+#   2. rag-eval — run the RAG evaluation harness: metric unit tests + an offline
+#                 retrieval/quality evaluation that enforces regression gates.
+#
+# The @SpringBootTest integration tests (ParseServiceTest, UploadServicePerformanceTest,
+# SmartPaiApplicationTests) need Elasticsearch / MySQL / Kafka / Redis and are run
+# locally / in a dedicated integration pipeline, not here.
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  backend:
+    name: Backend build & unit tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: maven
+
+      - name: Compile (all sources)
+        run: mvn -B -q compile
+
+      - name: Run infra-free unit tests
+        run: >
+          mvn -B -DfailIfNoTests=false
+          -Dtest=ParseServiceUnitTest,JwtUtilsRefreshTest,UserServiceTest,ConversationServiceTest,QueryRouterServiceTest
+          test
+
+      - name: Upload surefire reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: surefire-reports
+          path: target/surefire-reports/
+          if-no-files-found: ignore
+
+  rag-eval:
+    name: RAG evaluation (metrics + quality gates)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: eval
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: eval/requirements.txt
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Unit-test the metric implementations
+        run: python -m pytest tests/ -q
+
+      - name: Offline RAG evaluation + quality gates
+        run: >
+          python src/evaluate.py --mode offline
+          --note "CI offline run on recorded fixtures"
+
+      - name: Upload evaluation report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rag-eval-report
+          path: eval/reports/
+          if-no-files-found: ignore

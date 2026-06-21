@@ -1,0 +1,5 @@
+# PaiSmart RAG evaluation harness
+# Pure-Python; no heavy ML deps so it runs fast in CI.
+requests>=2.31,<3
+PyYAML>=6.0,<7
+pytest>=8.0,<9
